@@ -1,0 +1,31 @@
+{
+  "name": "analytics-backend",
+  "version": "1.0.0",
+  "description": "Backend for analytics events and Facebook CAPI integration.",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "analytics",
+    "facebook-capi",
+    "nodejs",
+    "express",
+    "backend"
+  ],
+  "author": "Your Name or Company",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.9.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
