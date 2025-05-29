@@ -1,0 +1,135 @@
+# .github/workflows/deploy-analytics.yml
+name: Deploy Analytics Backend App
+
+on:
+  push:
+    branches:
+      - main # Или ваша основная ветка для деплоя этого приложения
+    paths: # Запускать только если изменились файлы, относящиеся к этому приложению
+      - 'app.js' # Основной файл приложения
+      - 'services/**/*.js' # Пример: все js файлы в директории services
+      - 'controllers/**/*.js'
+      - 'routes/**/*.js'
+      - 'package.json'
+      - 'package-lock.json' # Если используете
+      - 'Dockerfile'
+      - 'ecosystem.config.js'
+      - 'docker-compose.yml' # Файл docker-compose для этого приложения
+      - '.github/workflows/deploy-analytics.yml' # Сам файл workflow
+
+jobs:
+  deploy:
+    name: Deploy Analytics Backend to Server
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout application code
+        uses: actions/checkout@v4
+
+      - name: Create project directory on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY_ANALYTICS }} # Используйте специфичный секрет для этого проекта, если ключи разные
+          port: 22
+          script_stop: true 
+          script: |
+            set -e 
+            APP_PROJECT_PATH="/opt/analytics-backend" # Путь к этому приложению на сервере
+            echo "=== Ensuring project directory exists on server: ${APP_PROJECT_PATH} ==="
+            mkdir -p ${APP_PROJECT_PATH}
+            echo "Project directory ensured."
+
+      - name: Sync application files to server using rsync
+        run: |
+          set -e
+          APP_PROJECT_PATH="/opt/analytics-backend" # Путь на сервере
+          echo "=== Syncing application files from runner to ${APP_PROJECT_PATH} on server using rsync ==="
+          
+          echo "Creating temporary deploy key file on runner..."
+          echo "${{ secrets.SSH_PRIVATE_KEY_ANALYTICS }}" > ~/deploy_key_analytics_app.pem
+          chmod 600 ~/deploy_key_analytics_app.pem
+          echo "Temporary deploy key file created and permissions set on runner."
+
+          echo "Starting rsync from runner to server..."
+          rsync -avz --delete \
+            -e "ssh -i ~/deploy_key_analytics_app.pem -p 22 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.env' \
+            --exclude 'node_modules/' \
+            --exclude 'logs/' \
+            ${{ github.workspace }}/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${APP_PROJECT_PATH}/
+          
+          echo "Rsync finished."
+          
+          echo "Removing temporary deploy key file from runner..."
+          rm -f ~/deploy_key_analytics_app.pem
+          echo "Temporary deploy key file removed from runner."
+
+      - name: Execute deployment commands on server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY_ANALYTICS }} # Используйте специфичный секрет
+          port: 22
+          script_stop: true
+          script: |
+            set -e 
+            APP_PROJECT_PATH="/opt/analytics-backend" 
+            
+            echo "=== Entering project directory: ${APP_PROJECT_PATH} ==="
+            cd ${APP_PROJECT_PATH} || { echo "ERROR: Failed to cd to ${APP_PROJECT_PATH} on server."; exit 1; }
+
+            CURRENT_DIR=$(pwd) 
+            echo "--- Current directory on server: ${CURRENT_DIR} ---"
+            
+            ENV_FILE_PATH_ON_SERVER="${CURRENT_DIR}/.env" 
+            echo "--- Verifying .env file at: ${ENV_FILE_PATH_ON_SERVER} ---"
+
+            if [ -f "${ENV_FILE_PATH_ON_SERVER}" ]; then
+              echo ".env file confirmed to exist and is a regular file by 'test -f' at ${ENV_FILE_PATH_ON_SERVER}."
+              echo "DEBUG: Permissions and owner of .env file (using ls -l):"
+              ls -l "${ENV_FILE_PATH_ON_SERVER}"
+            else
+              echo "ERROR: .env file NOT found or is NOT a regular file at ${ENV_FILE_PATH_ON_SERVER} according to 'test -f'."
+              echo "DEBUG: Listing all files in ${CURRENT_DIR} for context:"
+              ls -la "${CURRENT_DIR}"
+              echo "DEBUG: Output of 'stat ${ENV_FILE_PATH_ON_SERVER}' (if something with this name exists):"
+              stat "${ENV_FILE_PATH_ON_SERVER}" || echo "WARN: stat ${ENV_FILE_PATH_ON_SERVER} failed."
+              exit 1
+            fi
+            
+            echo '--- Determining docker-compose command on server ---'
+            if command -v docker-compose &> /dev/null; then
+                DOCKER_COMPOSE_CMD='docker-compose'
+            elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
+                DOCKER_COMPOSE_CMD='docker compose'
+            else
+                echo 'ERROR: docker-compose or docker compose command not found on server.'
+                exit 1
+            fi
+            echo "Using: $DOCKER_COMPOSE_CMD on server"
+
+            echo '--- Bringing down application (if running) on server ---'
+            $DOCKER_COMPOSE_CMD down --remove-orphans || echo 'WARN: docker-compose down failed, perhaps no containers were running or an error occurred.'
+
+            echo '--- Building and starting application on server ---'
+            $DOCKER_COMPOSE_CMD up -d --build --remove-orphans
+
+            echo '--- Application deployment finished on server ---'
+
+      - name: Clean up old Docker images on server (optional)
+        if: success() 
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY_ANALYTICS }} # Используйте специфичный секрет
+          script: |
+            set -e
+            echo "Cleaning up unused Docker images on server..."
+            docker image prune -af
+            echo "Docker image cleanup finished on server."

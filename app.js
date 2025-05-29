@@ -28,8 +28,7 @@ const corsOptions = {
 
 // Middlewares
 console.log('[App] Configuring middlewares...');
-app.use(cors());
-//app.use(cors(corsOptions));
+app.use(cors()); // Вы можете использовать app.use(cors(corsOptions)); для более строгой настройки
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -37,7 +36,8 @@ app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
     console.log(`[Request Logger] Received request: ${req.method} ${req.originalUrl}`);
     console.log(`[Request Logger] Headers: ${JSON.stringify(req.headers, null, 2)}`);
-    if (Object.keys(req.body).length > 0) {
+    // ИСПРАВЛЕНИЕ: Проверяем, что req.body существует и не пуст (и является объектом)
+    if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
         console.log(`[Request Logger] Body: ${JSON.stringify(req.body, null, 2)}`);
     }
     next(); // Передаем управление следующему middleware или роуту
