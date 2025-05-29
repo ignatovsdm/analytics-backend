@@ -2,11 +2,13 @@
 version: "3.8"
 
 networks:
-  # Используем сеть по умолчанию для этого compose-файла,
-  # но указываем, что она является внешней и ссылается на общую сеть Traefik.
   default:
     name: global_web_proxy_network # Имя общей сети, созданной глобальным Traefik
     external: true
+
+volumes: # Определяем именованный том для логов
+  analytics_app_logs:
+    name: analytics_backend_logs_data # Уникальное имя тома на хосте
 
 services:
   app:
@@ -15,30 +17,27 @@ services:
       dockerfile: Dockerfile
     container_name: "analytics_backend_app_instance" # Уникальное имя контейнера
     restart: unless-stopped
-    # networks: # Не нужно явно указывать, сервис app подключится к сети default
     env_file:
-      - .env # Загружает переменные для этого приложения из .env файла в этой директории
+      - .env
+    volumes: # Монтируем том для логов
+      - analytics_app_logs:/usr/src/app/logs # Связываем именованный том с директорией логов внутри контейнера
+      # Если предпочитаете монтировать локальную папку относительно docker-compose.yml:
+      # - ./logs_on_host:/usr/src/app/logs
     labels:
-      - "traefik.enable=true" # Включаем Traefik для этого сервиса
-      - "traefik.docker.network=global_web_proxy_network" # Явно указываем Traefik, в какой сети сервис
+      - "traefik.enable=true"
+      - "traefik.docker.network=global_web_proxy_network"
 
-      # --- HTTP Роутер (для редиректа на HTTPS) ---
-      # Имена роутеров и middleware должны быть уникальны в рамках всего Traefik
-      - "traefik.http.routers.analytics-http.rule=Host(`${APP_DOMAIN}`)" # APP_DOMAIN из .env этого проекта
+      - "traefik.http.routers.analytics-http.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.analytics-http.entrypoints=web"
-      - "traefik.http.routers.analytics-http.middlewares=analytics-redirect-https@docker" # Уникальное имя middleware
+      - "traefik.http.routers.analytics-http.middlewares=analytics-redirect-https@docker"
 
-      # --- Middleware для редиректа HTTP -> HTTPS (определяем его здесь же) ---
       - "traefik.http.middlewares.analytics-redirect-https.redirectscheme.scheme=https"
       - "traefik.http.middlewares.analytics-redirect-https.redirectscheme.permanent=true"
 
-      # --- HTTPS Роутер ---
-      - "traefik.http.routers.analytics-https.rule=Host(`${APP_DOMAIN}`)" # APP_DOMAIN из .env этого проекта
+      - "traefik.http.routers.analytics-https.rule=Host(`${APP_DOMAIN}`)"
       - "traefik.http.routers.analytics-https.entrypoints=websecure"
       - "traefik.http.routers.analytics-https.tls=true"
-      - "traefik.http.routers.analytics-https.tls.certresolver=letsencrypt" # Имя резолвера из общего Traefik
-      - "traefik.http.routers.analytics-https.service=analytics-service" # Связываем с сервисом ниже
+      - "traefik.http.routers.analytics-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.analytics-https.service=analytics-service"
 
-      # --- Определение сервиса для Traefik ---
-      # Имя сервиса должно быть уникальным
-      - "traefik.http.services.analytics-service.loadbalancer.server.port=3000" # Порт, который слушает приложение (из ecosystem.config.js)
+      - "traefik.http.services.analytics-service.loadbalancer.server.port=3000"

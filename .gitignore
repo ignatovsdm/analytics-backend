@@ -1,5 +1,27 @@
-# .gitignore
+# Dependencies
 node_modules/
+
+# Environment Variables - !! IMPORTANT !!
 .env
-npm-debug.log
+.env.*
+!/.env.example # Если у вас есть шаблон .env, который можно коммитить
+
+# Logs
+logs/ # Директория для логов Winston
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.log
+
+# Optional Editor directories and files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# macOS specific files
+.DS_Store
+
+# Build outputs (if any, e.g. from TypeScript)
+# dist/
+# build/

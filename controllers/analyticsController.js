@@ -1,11 +1,11 @@
 // controllers/analyticsController.js
-const { sendEventToFacebook } = require('../services/facebookCapiService'); // Убедитесь, что этот файл существует
+const { sendEventToFacebook } = require('../services/facebookCapiService');
+const logger = require('../utils/logger').childLogger('AnalyticsCtrl'); // ИЗМЕНЕН ПУТЬ
 
-console.log('[Controller] analyticsController.js loaded.');
+logger.info('analyticsController.js loaded.');
 
 exports.trackEventHandler = async (req, res, next) => {
-    // Добавляем next в параметры, если вдруг понадобится передать ошибку в глобальный обработчик
-    console.log('[Controller] trackEventHandler called.');
+    logger.info('trackEventHandler called.');
     const {
         eventName,
         eventId,
@@ -15,13 +15,13 @@ exports.trackEventHandler = async (req, res, next) => {
         eventTime,
     } = req.body;
 
-    console.log(`[Controller] Processing event: ${eventName}, Event ID: ${eventId}, SourceURL: ${eventSourceUrl}`);
-    // console.log(`[Controller] UserData received: ${JSON.stringify(userData, null, 2)}`); // Для детальной отладки
-    // console.log(`[Controller] CustomData received: ${JSON.stringify(customData, null, 2)}`); // Для детальной отладки
-
+    logger.info(`Processing event: ${eventName}`, { eventId, eventSourceUrl });
+    // Для детальной отладки (если LOG_LEVEL='debug' или 'silly'):
+    logger.debug('Received UserData:', { userData });
+    logger.debug('Received CustomData:', { customData });
 
     if (!eventName || !eventId || !eventSourceUrl) {
-        console.warn('[Controller] Validation Error: Missing required fields.');
+        logger.warn('Validation Error: Missing required fields.', { eventName, eventId, eventSourceUrl });
         return res.status(400).json({
             success: false,
             error: 'Missing required fields: eventName, eventId, and eventSourceUrl are required.',
@@ -30,8 +30,7 @@ exports.trackEventHandler = async (req, res, next) => {
 
     const clientIpAddress = req.headers['x-forwarded-for']?.split(',').shift()?.trim() || req.socket?.remoteAddress || req.ip;
     const clientUserAgent = req.headers['user-agent'];
-    console.log(`[Controller] Client IP: ${clientIpAddress}, User-Agent: ${clientUserAgent}`);
-
+    logger.info('Client Info captured', { clientIpAddress, clientUserAgent: clientUserAgent ? clientUserAgent.substring(0, 100) + '...' : 'N/A' }); // Обрезаем UserAgent для краткости
 
     const enrichedUserData = {
         ...userData,
@@ -39,7 +38,6 @@ exports.trackEventHandler = async (req, res, next) => {
         client_user_agent: clientUserAgent,
     };
 
-    // Асинхронная отправка в Facebook
     sendEventToFacebook({
         eventName,
         eventTime,
@@ -49,15 +47,19 @@ exports.trackEventHandler = async (req, res, next) => {
         customData,
     }).then(fbResponse => {
         if (fbResponse.success) {
-            console.log(`[Controller] FB CAPI processing for '${eventName}' (ID: ${eventId}) initiated successfully via controller.`);
+            logger.info(`FB CAPI processing initiated successfully for '${eventName}' (ID: ${eventId}).`);
         } else {
-            console.warn(`[Controller] FB CAPI processing for '${eventName}' (ID: ${eventId}) encountered an issue via controller.`);
+            logger.warn(`FB CAPI processing issue for '${eventName}' (ID: ${eventId}).`, { errorDetails: fbResponse.error });
         }
     }).catch(error => {
-        console.error(`[Controller] Unexpected error during FB CAPI async call for '${eventName}' (ID: ${eventId}):`, error);
+        logger.error(`Unexpected error during FB CAPI async call for '${eventName}' (ID: ${eventId}).`, { 
+            errorMessage: error.message, 
+            stack: error.stack,
+            errorObject: error
+        });
     });
 
-    console.log(`[Controller] Responding to client for event '${eventName}' (ID: ${eventId}).`);
+    logger.info(`Responding to client for event '${eventName}' (ID: ${eventId}).`);
     res.status(202).json({
         success: true,
         message: `Event '${eventName}' (ID: ${eventId}) received and queued for processing.`,

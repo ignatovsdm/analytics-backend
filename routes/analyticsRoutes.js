@@ -1,19 +1,18 @@
 // routes/analyticsRoutes.js
 const express = require('express');
 const router = express.Router();
-const analyticsController = require('../controllers/analyticsController'); // Убедитесь, что этот файл существует
+const analyticsController = require('../controllers/analyticsController');
+const logger = require('../utils/logger').childLogger('AnalyticsRoutes'); // ИЗМЕНЕН ПУТЬ
 
-console.log('[Routes] analyticsRoutes.js loaded.');
+logger.info('analyticsRoutes.js loaded.');
 
 router.post('/track', (req, res, next) => {
-    console.log(`[Routes] POST /track request received in analyticsRoutes.`);
-    // Передаем управление контроллеру
+    logger.info(`POST /track request received.`);
     analyticsController.trackEventHandler(req, res, next);
 });
 
-// Добавьте простой GET для проверки, что роутер вообще работает
 router.get('/ping', (req, res) => {
-    console.log('[Routes] GET /ping request received in analyticsRoutes.');
+    logger.info(`GET /ping request received.`);
     res.status(200).json({ success: true, message: 'Analytics routes are alive!' });
 });
 
